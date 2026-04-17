@@ -5,17 +5,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'vision_controller.dart';
 import 'damage_painter.dart';
 
-/// VisionPage implements the layered stack architecture
-/// for Smart Patrol System.
-///
-/// Architecture:
-/// - Layer 1 (Bottom): CameraPreview - Live video feed from hardware
-/// - Layer 2 (Top): CustomPaint - Digital overlay for detection boxes
-///
-/// This follows Separation of Concerns principle:
-/// - VisionController: Manages camera lifecycle and detection logic
-/// - VisionPage: Manages UI layout and user interactions
-/// - DamagePainter: Manages drawing logic (Phase 4)
 class VisionView extends StatefulWidget {
   const VisionView({super.key});
 
@@ -24,22 +13,33 @@ class VisionView extends StatefulWidget {
 }
 
 class _VisionViewState extends State<VisionView> {
-  // Initialize controller locally for this page
   late VisionController _visionController;
 
   @override
   void initState() {
     super.initState();
-    _visionController = VisionController();
+    _requestPermissionAndInit();
+  }
 
-    // Start mock detection (Phase 5)
-    _visionController.startMockDetection();
+  // Minta permission dulu, baru init controller
+  Future<void> _requestPermissionAndInit() async {
+    final status = await Permission.camera.request();
+    if (status.isGranted) {
+      _visionController = VisionController();
+      _visionController.startMockDetection();
+      setState(() {});
+    } else {
+      // Tampilkan pesan jika permission ditolak
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Izin kamera diperlukan!')),
+        );
+      }
+    }
   }
 
   @override
   void dispose() {
-    // MANDATORY: Disconnect camera when navigating away
-    // This prevents memory leaks and battery drain
     _visionController.dispose();
     super.dispose();
   }
@@ -47,81 +47,83 @@ class _VisionViewState extends State<VisionView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
         title: const Text("Smart-Patrol Vision"),
         actions: [
-          // Flashlight toggle (Phase 6 UX Enhancement)
-          IconButton(
-            icon: Icon(
-              _visionController.isFlashlightOn
-                  ? Icons.flash_on
-                  : Icons.flash_off,
+          // Tombol flashlight
+          ListenableBuilder(
+            listenable: _visionController,
+            builder: (context, _) => IconButton(
+              icon: Icon(
+                _visionController.isFlashlightOn
+                    ? Icons.flash_on
+                    : Icons.flash_off,
+                color: Colors.white,
+              ),
+              onPressed: _visionController.toggleFlashlight,
             ),
-            onPressed: _visionController.toggleFlashlight,
-            tooltip: 'Toggle Flashlight',
           ),
-          // Overlay visibility toggle (Phase 6 UX Enhancement)
-          IconButton(
-            icon: Icon(
-              _visionController.isOverlayVisible
-                  ? Icons.visibility
-                  : Icons.visibility_off,
+          // Tombol overlay
+          ListenableBuilder(
+            listenable: _visionController,
+            builder: (context, _) => IconButton(
+              icon: Icon(
+                _visionController.isOverlayVisible
+                    ? Icons.visibility
+                    : Icons.visibility_off,
+                color: Colors.white,
+              ),
+              onPressed: _visionController.toggleOverlay,
             ),
-            onPressed: _visionController.toggleOverlay,
-            tooltip: 'Toggle Overlay',
           ),
         ],
       ),
       body: ListenableBuilder(
         listenable: _visionController,
         builder: (context, child) {
-          // Show loading if camera is initializing
           if (!_visionController.isInitialized) {
             return _buildLoadingState();
           }
-
-          // Continue to Stack structure
-          return _buildVisionStack();
+          return Column(
+            children: [
+              // Area kamera (pakai Expanded agar mengisi ruang)
+              Expanded(child: _buildVisionStack()),
+              // Panel filter di bawah
+              _buildFilterPanel(),
+            ],
+          );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final image = await _visionController.takePhoto();
-          if (image != null && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Photo saved: ${image.path}'),
-                duration: const Duration(seconds: 3),
-                action: SnackBarAction(
-                  label: 'View',
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                    // You can add code here to open the image
-                    // For now, just showing the path
-                  },
-                ),
-              ),
-            );
-          }
-        },
-        tooltip: 'Capture Photo',
-        child: const Icon(Icons.camera),
+      floatingActionButton: ListenableBuilder(
+        listenable: _visionController,
+        builder: (context, _) => FloatingActionButton(
+          onPressed: () async {
+            final image = await _visionController.takePhoto();
+            if (image != null && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Foto disimpan: ${image.path}')),
+              );
+            }
+          },
+          child: const Icon(Icons.camera),
+        ),
       ),
     );
   }
 
-  /// Build loading state with informative message
-  /// Phase 6 UX Enhancement
   Widget _buildLoadingState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(),
+          const CircularProgressIndicator(color: Colors.white),
           const SizedBox(height: 16),
           const Text(
             "Menghubungkan ke Sensor Visual...",
-            style: TextStyle(fontSize: 16),
+            style: TextStyle(color: Colors.white, fontSize: 16),
           ),
           if (_visionController.errorMessage != null) ...[
             const SizedBox(height: 16),
@@ -135,8 +137,8 @@ class _VisionViewState extends State<VisionView> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => openAppSettings(),
-              child: const Text("Open Settings"),
+              onPressed: openAppSettings,
+              child: const Text("Buka Pengaturan"),
             ),
           ],
         ],
@@ -144,39 +146,147 @@ class _VisionViewState extends State<VisionView> {
     );
   }
 
-  /// Build the layered stack architecture
-  ///
-  /// This is the core of Vision architecture:
-  /// - Stack with fit: StackFit.expand fills entire screen
-  /// - Layer 1: CameraPreview with AspectRatio to prevent distortion
-  /// - Layer 2: CustomPaint for digital overlay
   Widget _buildVisionStack() {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // LAYER 1: Hardware Preview
-        // Use AspectRatio to prevent image distortion (PCD Connection)
-        // Camera images often have different aspect ratios than screen
-        // This ensures the image maintains correct proportions
+        // LAYER 1: Camera Preview dengan filter warna
         Center(
           child: AspectRatio(
             aspectRatio: _visionController.controller!.value.aspectRatio,
-            child: CameraPreview(_visionController.controller!),
+            child: _buildFilteredPreview(),
           ),
         ),
 
-        // LAYER 2: Digital Overlay (Canvas)
-        // This layer is transparent and sits exactly above camera
-        // DamagePainter will draw detection boxes here (Phase 4)
+        // LAYER 2: Detection overlay
         if (_visionController.isOverlayVisible)
           Positioned.fill(
             child: CustomPaint(
-              painter: DamagePainter(
-                _visionController.currentDetections,
-              ), // Phase 4: Will be updated with detections
+              painter: DamagePainter(_visionController.currentDetections),
             ),
           ),
+
+        // LAYER 3: Label filter aktif (pojok kiri atas)
+        Positioned(
+          top: 12,
+          left: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _visionController.currentFilter.displayName,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  // Terapkan ColorFilter di atas CameraPreview
+  Widget _buildFilteredPreview() {
+    final colorFilter = _visionController.currentFilter.colorFilter;
+    final preview = CameraPreview(_visionController.controller!);
+
+    if (colorFilter == null) {
+      return preview; // Mode normal, tidak ada filter
+    }
+
+    return ColorFiltered(
+      colorFilter: colorFilter,
+      child: preview,
+    );
+  }
+
+  // Panel pilihan filter di bagian bawah
+  Widget _buildFilterPanel() {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 16, bottom: 8),
+            child: Text(
+              'Filter',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 70,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: CameraFilter.values.length,
+              itemBuilder: (context, index) {
+                final filter = CameraFilter.values[index];
+                final isSelected =
+                    _visionController.currentFilter == filter;
+                return GestureDetector(
+                  onTap: () => _visionController.setFilter(filter),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    width: 65,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Colors.indigo
+                          : Colors.white12,
+                      borderRadius: BorderRadius.circular(12),
+                      border: isSelected
+                          ? Border.all(color: Colors.indigoAccent, width: 2)
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _filterIcon(filter),
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          filter.displayName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _filterIcon(CameraFilter filter) {
+    switch (filter) {
+      case CameraFilter.normal:
+        return Icons.photo_camera;
+      case CameraFilter.grayscale:
+        return Icons.contrast;
+      case CameraFilter.sepia:
+        return Icons.wb_sunny_outlined;
+      case CameraFilter.inverted:
+        return Icons.invert_colors;
+      case CameraFilter.cool:
+        return Icons.ac_unit;
+      case CameraFilter.warm:
+        return Icons.local_fire_department;
+    }
   }
 }
