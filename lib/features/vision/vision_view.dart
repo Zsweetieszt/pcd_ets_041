@@ -16,8 +16,6 @@ class VisionView extends StatefulWidget {
 class _VisionViewState extends State<VisionView> {
   late VisionController _ctrl;
   String? _lastPhotoPath;
-
-  // Filter strength (0.0 – 1.0)
   double _filterStrength = 1.0;
 
   @override
@@ -39,24 +37,39 @@ class _VisionViewState extends State<VisionView> {
   }
 
   // ─────────────────────────────────────────────
-  //  CAPTURE
+  //  CAPTURE — sekarang push balik ke dashboard
   // ─────────────────────────────────────────────
 
   Future<void> _capturePhoto() async {
     final image = await _ctrl.takePhoto();
     if (image == null || !mounted) return;
+
     setState(() => _lastPhotoPath = image.path);
-    _showPhotoPreview(image.path);
+
+    // Tampilkan preview dulu, lalu tanya user apakah mau dikirim ke dashboard
+    final sendToDashboard = await _showPhotoPreview(image.path);
+
+    if (sendToDashboard == true && mounted) {
+      // Kembalikan path + nama filter aktif ke caller (VisionDashboardView)
+      Navigator.of(context).pop({
+        'path': image.path,
+        'filter': _ctrl.currentFilter,
+      });
+    }
   }
 
-  void _showPhotoPreview(String path) {
-    showModalBottomSheet(
+  /// Menampilkan preview foto dan mengembalikan true jika user pilih
+  /// "Kirim ke Dashboard", false/null jika tutup saja.
+  Future<bool?> _showPhotoPreview(String path) {
+    return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _PhotoPreviewSheet(
         imagePath: path,
         filterName: _ctrl.currentFilter,
+        onSendToDashboard: () => Navigator.of(context).pop(true),
+        onDismiss: () => Navigator.of(context).pop(false),
       ),
     );
   }
@@ -76,11 +89,12 @@ class _VisionViewState extends State<VisionView> {
           ? FloatingActionButton(
               onPressed: _capturePhoto,
               backgroundColor: Colors.white,
-              child:
-                  const Icon(Icons.camera_alt, color: Colors.black, size: 30),
+              child: const Icon(Icons.camera_alt,
+                  color: Colors.black, size: 30),
             )
           : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButtonLocation:
+          FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -106,7 +120,6 @@ class _VisionViewState extends State<VisionView> {
         ],
       ),
       actions: [
-        // Flashlight
         IconButton(
           icon: Icon(
             _ctrl.isFlashlightOn ? Icons.flashlight_on : Icons.flashlight_off,
@@ -115,7 +128,6 @@ class _VisionViewState extends State<VisionView> {
           tooltip: 'Flash',
           onPressed: _ctrl.isInitialized ? _ctrl.toggleFlashlight : null,
         ),
-        // Toggle overlay
         IconButton(
           icon: Icon(
             _ctrl.isOverlayEnabled ? Icons.layers : Icons.layers_clear,
@@ -128,7 +140,6 @@ class _VisionViewState extends State<VisionView> {
               : 'Tampilkan Overlay',
           onPressed: _ctrl.isInitialized ? _ctrl.toggleOverlay : null,
         ),
-        // Toggle filter stream
         IconButton(
           icon: Icon(
             _ctrl.isFilterEnabled
@@ -141,7 +152,6 @@ class _VisionViewState extends State<VisionView> {
               : 'Aktifkan Filter',
           onPressed: _ctrl.isInitialized ? _ctrl.toggleFilter : null,
         ),
-        // Thumbnail
         if (_lastPhotoPath != null)
           GestureDetector(
             onTap: () => _showPhotoPreview(_lastPhotoPath!),
@@ -151,7 +161,8 @@ class _VisionViewState extends State<VisionView> {
               height: 38,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.white38, width: 1.5),
+                border:
+                    Border.all(color: Colors.white38, width: 1.5),
                 image: DecorationImage(
                   image: FileImage(File(_lastPhotoPath!)),
                   fit: BoxFit.cover,
@@ -204,11 +215,12 @@ class _VisionViewState extends State<VisionView> {
                   style: TextStyle(color: Colors.white54, fontSize: 13),
                   textAlign: TextAlign.center),
             ] else ...[
-              const Icon(Icons.error_outline, color: Colors.orange, size: 56),
+              const Icon(Icons.error_outline,
+                  color: Colors.orange, size: 56),
               const SizedBox(height: 16),
               Text(_ctrl.errorMessage!,
-                  style:
-                      const TextStyle(color: Colors.white70, fontSize: 14),
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 14),
                   textAlign: TextAlign.center),
             ],
           ],
@@ -243,8 +255,8 @@ class _VisionViewState extends State<VisionView> {
             const Text(
               'Aplikasi membutuhkan izin kamera untuk mendeteksi kerusakan jalan.\n\n'
               'Buka Settings dan aktifkan izin kamera untuk aplikasi ini.',
-              style:
-                  TextStyle(color: Colors.white60, fontSize: 14, height: 1.6),
+              style: TextStyle(
+                  color: Colors.white60, fontSize: 14, height: 1.6),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
@@ -255,8 +267,8 @@ class _VisionViewState extends State<VisionView> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.indigo,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 28, vertical: 14),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30)),
               ),
@@ -290,15 +302,12 @@ class _VisionViewState extends State<VisionView> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Layer 1: Camera Preview
         Center(
           child: AspectRatio(
             aspectRatio: previewAspect,
             child: CameraPreview(cam),
           ),
         ),
-
-        // Layer 2: Filtered overlay
         if (_ctrl.isFilterEnabled &&
             _ctrl.currentFilter != 'Original' &&
             _ctrl.processedImageBytes != null)
@@ -315,8 +324,6 @@ class _VisionViewState extends State<VisionView> {
               ),
             ),
           ),
-
-        // Layer 3: DamagePainter overlay
         if (_ctrl.isOverlayEnabled)
           CustomPaint(
             painter: DamagePainter(
@@ -325,15 +332,11 @@ class _VisionViewState extends State<VisionView> {
             ),
             child: const SizedBox.expand(),
           ),
-
-        // Layer 4: Filter badge
         Positioned(
           top: 12,
           left: 12,
           child: _buildFilterBadge(),
         ),
-
-        // Layer 5: Strength slider (hanya saat filter aktif & bukan Original)
         if (_ctrl.isFilterEnabled && _ctrl.currentFilter != 'Original')
           Positioned(
             top: 60,
@@ -369,9 +372,7 @@ class _VisionViewState extends State<VisionView> {
         Text(
           active ? _ctrl.currentFilter : 'Original',
           style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w500),
+              color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
         ),
         if (active) ...[
           const SizedBox(width: 6),
@@ -429,20 +430,21 @@ class _VisionViewState extends State<VisionView> {
         Text(
           '${(_filterStrength * 100).round()}%',
           style: const TextStyle(
-              color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold),
         ),
       ]),
     );
   }
 
   // ─────────────────────────────────────────────
-  //  BOTTOM BAR: Filter + Category Tabs
+  //  BOTTOM BAR: Filter selector
   // ─────────────────────────────────────────────
 
   Widget _buildBottomBar() {
     if (!_ctrl.isInitialized) return const SizedBox.shrink();
 
-    // Group filters by category
     final categories = _filterCategories();
 
     return Container(
@@ -499,46 +501,44 @@ class _VisionViewState extends State<VisionView> {
               : Colors.grey.shade800.withOpacity(enabled ? 1 : 0.4),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected && enabled
-                ? meta.color
-                : Colors.transparent,
+            color: selected && enabled ? meta.color : Colors.transparent,
             width: 1.5,
           ),
         ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(meta.icon,
-              color: enabled
-                  ? (selected ? meta.color : Colors.white70)
-                  : Colors.white38,
-              size: 22),
-          const SizedBox(height: 4),
-          Text(
-            name,
-            style: TextStyle(
-                color: enabled
-                    ? (selected ? meta.color : Colors.white70)
-                    : Colors.white38,
-                fontSize: 8.5,
-                fontWeight:
-                    selected ? FontWeight.bold : FontWeight.normal),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-          ),
-        ]),
+        child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(meta.icon,
+                  color: enabled
+                      ? (selected ? meta.color : Colors.white70)
+                      : Colors.white38,
+                  size: 22),
+              const SizedBox(height: 4),
+              Text(
+                name,
+                style: TextStyle(
+                    color: enabled
+                        ? (selected ? meta.color : Colors.white70)
+                        : Colors.white38,
+                    fontSize: 8.5,
+                    fontWeight: selected
+                        ? FontWeight.bold
+                        : FontWeight.normal),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+              ),
+            ]),
       ),
     );
   }
-
-  // ─────────────────────────────────────────────
-  //  FILTER META & CATEGORIES
-  // ─────────────────────────────────────────────
 
   _FilterMeta _filterMeta(String name) {
     switch (name) {
       case 'Grayscale':
         return _FilterMeta(Icons.gradient, Colors.grey);
       case 'Sepia':
-        return _FilterMeta(Icons.wb_sunny_outlined, const Color(0xFFC8A46E));
+        return _FilterMeta(
+            Icons.wb_sunny_outlined, const Color(0xFFC8A46E));
       case 'Inverted':
         return _FilterMeta(Icons.invert_colors, Colors.purple);
       case 'High Contrast':
@@ -600,20 +600,26 @@ class _FilterMeta {
 }
 
 // ─────────────────────────────────────────────
-//  PHOTO PREVIEW BOTTOM SHEET
+//  PHOTO PREVIEW BOTTOM SHEET — dengan tombol kirim ke dashboard
 // ─────────────────────────────────────────────
 
 class _PhotoPreviewSheet extends StatelessWidget {
   final String imagePath;
   final String filterName;
+  final VoidCallback onSendToDashboard;
+  final VoidCallback onDismiss;
 
-  const _PhotoPreviewSheet(
-      {required this.imagePath, required this.filterName});
+  const _PhotoPreviewSheet({
+    required this.imagePath,
+    required this.filterName,
+    required this.onSendToDashboard,
+    required this.onDismiss,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.78,
+      height: MediaQuery.of(context).size.height * 0.82,
       decoration: const BoxDecoration(
         color: Colors.black,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -633,19 +639,21 @@ class _PhotoPreviewSheet extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Foto Terambil',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
-                Text('Filter: $filterName',
-                    style: const TextStyle(
-                        color: Colors.white60, fontSize: 12)),
-              ]),
+              Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Foto Terambil',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold)),
+                    Text('Filter: $filterName',
+                        style: const TextStyle(
+                            color: Colors.white60, fontSize: 12)),
+                  ]),
               IconButton(
                 icon: const Icon(Icons.close, color: Colors.white60),
-                onPressed: () => Navigator.pop(context),
+                onPressed: onDismiss,
               ),
             ],
           ),
@@ -659,9 +667,26 @@ class _PhotoPreviewSheet extends StatelessWidget {
             ),
           ),
         ),
+        // Tombol kirim ke dashboard
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: ElevatedButton.icon(
+            onPressed: onSendToDashboard,
+            icon: const Icon(Icons.analytics_outlined, size: 18),
+            label: const Text('Kirim ke Dashboard & Analisis'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6C63FF),
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
         Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.white10,
             borderRadius: BorderRadius.circular(10),
