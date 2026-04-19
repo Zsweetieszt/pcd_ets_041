@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:lottie/lottie.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_markdown/flutter_markdown.dart'; // Import package markdown
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import 'log_controller.dart';
 import 'log_editor_page.dart';
@@ -13,6 +13,7 @@ import 'models/log_model.dart';
 import '../../services/access_control_service.dart';
 import '../onboarding/onboarding_view.dart';
 import '../vision/vision_view.dart';
+import '../vision/vision_dashboard_view.dart';
 
 
 class LogView extends StatefulWidget {
@@ -492,16 +493,13 @@ class _LogViewState extends State<LogView> {
                     onPressed: _isOnline ? _syncFromCloud : null,
                   ),
           ),
-          // 🎥 TOMBOL KAMERA - TAMBAHKAN INI
           IconButton(
             icon: const Icon(Icons.camera_alt, color: Colors.white),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => const VisionView(),
-              ),
+              MaterialPageRoute(builder: (_) => const VisionDashboardView()),
             ),
-            tooltip: 'Smart Camera',
+            tooltip: 'Vision Dashboard',
           ),
           
           IconButton(

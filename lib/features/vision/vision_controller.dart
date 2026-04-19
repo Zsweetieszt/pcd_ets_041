@@ -1,3 +1,4 @@
+// File: lib/features/vision/vision_controller.dart
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
@@ -9,12 +10,10 @@ import 'package:image/image.dart' as img;
 //  MODEL: Hasil deteksi satu objek (Task 4)
 // ─────────────────────────────────────────────
 
-/// Representasi satu kotak deteksi mock (simulasi YOLO / RDD-2022).
-/// Koordinat dalam rentang 0.0–1.0 (ternormalisasi terhadap ukuran layar).
 class DetectionResult {
-  final Rect box;       // koordinat ternormalisasi
-  final String label;   // contoh: "D40 - Pothole"
-  final double score;   // confidence 0.0–1.0
+  final Rect box;
+  final String label;
+  final double score;
 
   const DetectionResult({
     required this.box,
@@ -31,22 +30,28 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
   CameraController? controller;
 
   bool isInitialized = false;
-  String? errorMessage; // 'CAMERA_DENIED' atau pesan error lain
+  String? errorMessage;
 
   // ── UX toggles ──
   bool isFlashlightOn = false;
   bool isFilterEnabled = true;
-  bool isOverlayEnabled = true; // Homework 1: toggle overlay painter
+  bool isOverlayEnabled = true;
 
   // ── Filter ──
   String currentFilter = 'Original';
+
+  // EXPANDED filter list — grouped
   final List<String> availableFilters = [
+    // Original
     'Original',
-    'Grayscale',
-    'Sepia',
-    'Inverted',
-    'High Contrast',
-    'Edge Detection',
+    // Classic
+    'Grayscale', 'Sepia', 'Noir', 'Fade',
+    // Tone
+    'Warm', 'Cold', 'Vivid',
+    // Color tint
+    'Red', 'Green', 'Blue', 'Cyan', 'Yellow', 'Magenta',
+    // Special effects
+    'Inverted', 'High Contrast', 'Edge Detection', 'Posterize', 'Emboss',
   ];
 
   // ── Preview overlay ──
@@ -56,15 +61,14 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
   List<DetectionResult> detections = [];
   Timer? _mockDetectionTimer;
 
-  // ── Sensor orientation (fix rotasi) ──
+  // ── Sensor orientation ──
   int _sensorOrientation = 90;
 
   // ── Throttle ──
   bool _isProcessing = false;
   DateTime _lastFrameTime = DateTime(0);
-  static const _minFrameIntervalMs = 120; // ~8 fps
+  static const _minFrameIntervalMs = 120;
 
-  // ── RDD-2022 damage catalogue ──
   static const _damageTypes = [
     {'label': 'D40 - Pothole',            'score': 0.91},
     {'label': 'D20 - Alligator Crack',    'score': 0.83},
@@ -124,12 +128,12 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // ─────────────────────────────────────────────
-  //  MOCK DETECTION (Task 4)
+  //  MOCK DETECTION
   // ─────────────────────────────────────────────
 
   void _startMockDetection() {
     _mockDetectionTimer?.cancel();
-    _generateMockDetection(); // langsung satu kali
+    _generateMockDetection();
     _mockDetectionTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) => _generateMockDetection(),
@@ -144,15 +148,12 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _generateMockDetection() {
     final rng = Random();
-    final count = rng.nextInt(2) + 1; // 1 atau 2 kotak
+    final count = rng.nextInt(2) + 1;
     final newDetections = <DetectionResult>[];
 
     for (int i = 0; i < count; i++) {
-      // Ukuran proporsional: 20%–35% lebar layar (Task 4 - Scaling Calibration)
       final w = 0.20 + rng.nextDouble() * 0.15;
       final h = w * (0.55 + rng.nextDouble() * 0.45);
-
-      // Posisi acak, tidak keluar batas
       final x = rng.nextDouble() * (1.0 - w);
       final y = rng.nextDouble() * (1.0 - h);
 
@@ -187,7 +188,8 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
   void _onCameraFrame(CameraImage image) {
     final now = DateTime.now();
     if (_isProcessing) return;
-    if (now.difference(_lastFrameTime).inMilliseconds < _minFrameIntervalMs) return;
+    if (now.difference(_lastFrameTime).inMilliseconds < _minFrameIntervalMs)
+      return;
 
     if (currentFilter == 'Original') {
       if (processedImageBytes != null) {
@@ -216,7 +218,7 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // ─────────────────────────────────────────────
-  //  YUV420 → RGB (Full Color)
+  //  YUV420 → RGB
   // ─────────────────────────────────────────────
 
   img.Image? _yuv420ToRgb(CameraImage cameraImage) {
@@ -236,15 +238,19 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
       for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
           final yIdx = y * yPlane.bytesPerRow + x;
-          final uvIdx = (y ~/ 2) * uvRowStride + (x ~/ 2) * uvPixelStride;
-          if (yIdx >= yBytes.length || uvIdx >= uBytes.length || uvIdx >= vBytes.length) continue;
+          final uvIdx =
+              (y ~/ 2) * uvRowStride + (x ~/ 2) * uvPixelStride;
+          if (yIdx >= yBytes.length ||
+              uvIdx >= uBytes.length ||
+              uvIdx >= vBytes.length) continue;
 
           final yv = yBytes[yIdx] & 0xFF;
           final uv = (uBytes[uvIdx] & 0xFF) - 128;
           final vv = (vBytes[uvIdx] & 0xFF) - 128;
 
           final r = (yv + 1.402 * vv).round().clamp(0, 255);
-          final g = (yv - 0.344 * uv - 0.714 * vv).round().clamp(0, 255);
+          final g =
+              (yv - 0.344 * uv - 0.714 * vv).round().clamp(0, 255);
           final b = (yv + 1.772 * uv).round().clamp(0, 255);
           result.setPixelRgba(x, y, r, g, b, 255);
         }
@@ -256,30 +262,132 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// FIX: Rotasi gambar sesuai sensor orientation agar tidak terbalik.
-  /// Kamera Android memiliki sensor yang dipasang miring 90°.
   img.Image _rotateCameraImage(img.Image source) {
     switch (_sensorOrientation) {
-      case 90:  return img.copyRotate(source, angle: 90);
-      case 180: return img.copyRotate(source, angle: 180);
-      case 270: return img.copyRotate(source, angle: 270);
-      default:  return source;
+      case 90:
+        return img.copyRotate(source, angle: 90);
+      case 180:
+        return img.copyRotate(source, angle: 180);
+      case 270:
+        return img.copyRotate(source, angle: 270);
+      default:
+        return source;
     }
   }
 
   // ─────────────────────────────────────────────
-  //  FILTER ENGINE
+  //  FILTER ENGINE — EXTENDED
   // ─────────────────────────────────────────────
 
   img.Image _applyFilter(img.Image src, String name) {
     switch (name) {
-      case 'Grayscale':     return img.grayscale(src);
-      case 'Sepia':         return img.sepia(src);
-      case 'Inverted':      return img.invert(src);
-      case 'High Contrast': return img.adjustColor(src, contrast: 1.8, brightness: 1.05);
-      case 'Edge Detection': return img.sobel(img.grayscale(src));
-      default:              return src;
+      // ── Classic ──
+      case 'Grayscale':
+        return img.grayscale(src);
+
+      case 'Sepia':
+        return img.sepia(src);
+
+      case 'Noir':
+        // High-contrast B&W
+        final gray = img.grayscale(src);
+        return img.adjustColor(gray, contrast: 2.0, brightness: 0.9);
+
+      case 'Fade':
+        // Desaturate + brighten + lower contrast
+        final faded = img.adjustColor(
+          src,
+          saturation: 0.3,
+          brightness: 1.15,
+          contrast: 0.7,
+        );
+        return faded;
+
+      // ── Tone ──
+      case 'Warm':
+        return _applyColorBalance(src, rShift: 30, gShift: 10, bShift: -20);
+
+      case 'Cold':
+        return _applyColorBalance(src, rShift: -20, gShift: 10, bShift: 35);
+
+      case 'Vivid':
+        return img.adjustColor(src, saturation: 2.0, contrast: 1.3);
+
+      // ── Color Tint ──
+      case 'Red':
+        return _applyColorTint(src, r: 255, g: 0, b: 0, tintStrength: 0.4);
+      case 'Green':
+        return _applyColorTint(src, r: 0, g: 255, b: 0, tintStrength: 0.4);
+      case 'Blue':
+        return _applyColorTint(src, r: 0, g: 0, b: 255, tintStrength: 0.4);
+      case 'Cyan':
+        return _applyColorTint(src, r: 0, g: 255, b: 255, tintStrength: 0.35);
+      case 'Yellow':
+        return _applyColorTint(src, r: 255, g: 255, b: 0, tintStrength: 0.35);
+      case 'Magenta':
+        return _applyColorTint(src, r: 255, g: 0, b: 255, tintStrength: 0.35);
+
+      // ── Special Effects ──
+      case 'Inverted':
+        return img.invert(src);
+
+      case 'High Contrast':
+        return img.adjustColor(src, contrast: 1.8, brightness: 1.05);
+
+      case 'Edge Detection':
+        return img.sobel(img.grayscale(src));
+
+      case 'Posterize':
+        return img.quantize(src, numberOfColors: 16);
+
+      case 'Emboss':
+        return img.emboss(src);
+
+      default:
+        return src;
     }
+  }
+
+  /// Tint warna: blending gambar asli dengan warna solid
+  img.Image _applyColorTint(
+    img.Image src, {
+    required int r,
+    required int g,
+    required int b,
+    double tintStrength = 0.4,
+  }) {
+    final result = img.Image(width: src.width, height: src.height);
+    final inv = 1.0 - tintStrength;
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        final p = src.getPixel(x, y);
+        final nr = (p.r.toDouble() * inv + r * tintStrength).round().clamp(0, 255);
+        final ng = (p.g.toDouble() * inv + g * tintStrength).round().clamp(0, 255);
+        final nb = (p.b.toDouble() * inv + b * tintStrength).round().clamp(0, 255);
+        result.setPixelRgba(x, y, nr, ng, nb, 255);
+      }
+    }
+    return result;
+  }
+
+  /// Warm/Cold: shift warna channel secara manual
+  img.Image _applyColorBalance(
+    img.Image src, {
+    int rShift = 0,
+    int gShift = 0,
+    int bShift = 0,
+  }) {
+    final result = img.Image(width: src.width, height: src.height);
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        final p = src.getPixel(x, y);
+        final nr = (p.r.toInt() + rShift).clamp(0, 255);
+        final ng = (p.g.toInt() + gShift).clamp(0, 255);
+        final nb = (p.b.toInt() + bShift).clamp(0, 255);
+        result.setPixelRgba(x, y, nr, ng, nb, 255);
+      }
+    }
+    return result;
   }
 
   // ─────────────────────────────────────────────
@@ -317,21 +425,21 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
         isFlashlightOn ? FlashMode.torch : FlashMode.off,
       );
     } catch (e) {
-      isFlashlightOn = !isFlashlightOn; // rollback
+      isFlashlightOn = !isFlashlightOn;
       debugPrint('Flash error: $e');
     }
     notifyListeners();
   }
 
-  /// FIX: Tidak null-kan processedImageBytes setelah foto sehingga overlay tetap tampil.
   Future<XFile?> takePhoto() async {
     if (controller == null || !controller!.value.isInitialized) return null;
-    final wasStreaming = isFilterEnabled && controller!.value.isStreamingImages;
+    final wasStreaming =
+        isFilterEnabled && controller!.value.isStreamingImages;
     try {
       if (wasStreaming) _stopImageStream();
       await Future.delayed(const Duration(milliseconds: 150));
       final image = await controller!.takePicture();
-      if (wasStreaming) _startImageStream(); // restart, TANPA null-kan bytes
+      if (wasStreaming) _startImageStream();
       return image;
     } catch (e) {
       errorMessage = 'Gagal mengambil foto: $e';
@@ -342,7 +450,7 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // ─────────────────────────────────────────────
-  //  LIFECYCLE (Resource Guard - Task 4)
+  //  LIFECYCLE
   // ─────────────────────────────────────────────
 
   @override
