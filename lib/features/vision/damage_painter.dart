@@ -1,190 +1,238 @@
-// import 'dart:ui' as ui;
-// import 'package:flutter/material.dart';
-// import 'vision_controller.dart';
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
+import 'vision_controller.dart';
 
-// /// DamagePainter implements custom painting for road damage detection
-// ///
-// /// This follows Single Responsibility Principle:
-// /// - Only handles drawing logic
-// /// - Receives detection results from VisionController
-// /// - Doesn't manage camera or state
-// ///
-// /// Can be extended in Module 7 for YOLO integration
-// class DamagePainter extends CustomPainter {
-//   final List<DetectionResult> results;
+/// DamagePainter menggambar dua lapisan overlay di atas camera preview:
+///
+/// 1. Static Anchor (Task 3): Crosshair di tengah layar + label "Searching..."
+/// 2. Detection Boxes (Task 4 + Homework 3): Kotak deteksi mock dengan
+///    skema warna RDD-2022 (Merah=berat, Kuning=ringan) dan shadow pada teks.
+///
+/// Single Responsibility: hanya urusan menggambar, state dikelola VisionController.
+class DamagePainter extends CustomPainter {
+  final List<DetectionResult> results;
+  final bool showSearching; // true = tampilkan label "Searching..."
 
-//   DamagePainter(this.results);
+  const DamagePainter({
+    required this.results,
+    this.showSearching = true,
+  });
 
-//   @override
-//   void paint(Canvas canvas, Size size) {
-//     // If no detections, draw static crosshair (Phase 4 requirement)
-//     if (results.isEmpty) {
-//       _drawStaticCrosshair(canvas, size);
-//       return;
-//     }
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Selalu gambar crosshair di tengah (Task 3)
+    _drawCrosshair(canvas, size);
 
-//     // Draw each detection result
-//     for (var result in results) {
-//       _drawDetectionBox(canvas, size, result);
-//     }
-//   }
+    if (results.isEmpty) {
+      // Tidak ada deteksi → tampilkan label searching (Task 3)
+      if (showSearching) {
+        _drawSearchingLabel(canvas, size);
+      }
+      return;
+    }
 
-//   /// Draw static crosshair as visual anchor
-//   /// This provides user guidance for targeting road damage objects
-//   void _drawStaticCrosshair(Canvas canvas, Size size) {
-//     final centerX = size.width / 2;
-//     final centerY = size.height / 2;
+    // Gambar setiap kotak deteksi (Task 4 + Homework 3)
+    for (final result in results) {
+      _drawDetectionBox(canvas, size, result);
+    }
+  }
 
-//     final paint = Paint()
-//       ..color = Colors.white.withOpacity(0.5)
-//       ..strokeWidth = 2.0
-//       ..style = PaintingStyle.stroke;
+  // ─────────────────────────────────────────────
+  //  TASK 3: Static Crosshair Anchor
+  // ─────────────────────────────────────────────
 
-//     // Draw horizontal line
-//     canvas.drawLine(
-//       Offset(centerX - 50, centerY),
-//       Offset(centerX + 50, centerY),
-//       paint,
-//     );
+  void _drawCrosshair(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    const arm = 28.0;
+    const gap = 7.0;
 
-//     // Draw vertical line
-//     canvas.drawLine(
-//       Offset(centerX, centerY - 50),
-//       Offset(centerX, centerY + 50),
-//       paint,
-//     );
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.75)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
 
-//     // Draw circle in center
-//     canvas.drawCircle(
-//       Offset(centerX, centerY),
-//       30,
-//       Paint()
-//         ..color = Colors.white.withOpacity(0.3)
-//         ..style = PaintingStyle.stroke
-//         ..strokeWidth = 2.0,
-//     );
+    // Shadow di belakang garis (agar terbaca di latar terang)
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.4)
+      ..strokeWidth = 3.5
+      ..style = PaintingStyle.stroke
+      ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 2);
 
-//     // Draw label
-//     _drawLabel(
-//       canvas,
-//       Rect.fromCircle(center: Offset(centerX, centerY), radius: 30),
-//       "Searching for Road Damage...",
-//       1.0,
-//     );
-//   }
+    final lines = [
+      [Offset(cx - arm, cy), Offset(cx - gap, cy)],
+      [Offset(cx + gap, cy), Offset(cx + arm, cy)],
+      [Offset(cx, cy - arm), Offset(cx, cy - gap)],
+      [Offset(cx, cy + gap), Offset(cx, cy + arm)],
+    ];
 
-//   /// Draw detection bounding box with label
-//   ///
-//   /// Implements coordinate scaling:
-//   /// - Normalized coordinates (0.0-1.0) from AI
-//   /// - Scaled to logical pixels on screen
-//   void _drawDetectionBox(Canvas canvas, Size size, DetectionResult result) {
-//     // Scale normalized coordinates to screen pixels
-//     final box = Rect.fromLTWH(
-//       result.box.left * size.width,
-//       result.box.top * size.height,
-//       result.box.width * size.width,
-//       result.box.height * size.height,
-//     );
+    for (final line in lines) {
+      canvas.drawLine(line[0], line[1], shadowPaint);
+      canvas.drawLine(line[0], line[1], paint);
+    }
 
-//     // Get color based on damage severity
-//     final boxColor = _getColorForDamage(result.label);
+    // Lingkaran kecil di tengah
+    canvas.drawCircle(
+      Offset(cx, cy), 4,
+      Paint()..color = Colors.white.withOpacity(0.6),
+    );
+  }
 
-//     // Draw bounding box
-//     final paint = Paint()
-//       ..color = boxColor
-//       ..strokeWidth = 3.0
-//       ..style = PaintingStyle.stroke;
+  // ─────────────────────────────────────────────
+  //  TASK 3: Label "Searching..." dengan TextPainter
+  // ─────────────────────────────────────────────
 
-//     canvas.drawRect(box, paint);
+  void _drawSearchingLabel(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
 
-//     // Draw shadow for better visibility
-//     final shadowPaint = Paint()
-//       ..color = Colors.black.withOpacity(0.5)
-//       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 3);
+    // Gambar label di bawah crosshair
+    _drawTextWithBackground(
+      canvas: canvas,
+      text: 'Searching for Road Damage...',
+      position: Offset(cx, cy + 45),
+      textColor: Colors.white,
+      backgroundColor: Colors.black.withOpacity(0.55),
+      fontSize: 13,
+      centered: true,
+    );
+  }
 
-//     canvas.drawRect(box, shadowPaint);
+  // ─────────────────────────────────────────────
+  //  TASK 4 + HOMEWORK 3: Detection Box
+  // ─────────────────────────────────────────────
 
-//     // Redraw box on top of shadow
-//     canvas.drawRect(box, paint);
+  void _drawDetectionBox(Canvas canvas, Size size, DetectionResult result) {
+    // Scale koordinat ternormalisasi ke pixel
+    final box = Rect.fromLTWH(
+      result.box.left * size.width,
+      result.box.top * size.height,
+      result.box.width * size.width,
+      result.box.height * size.height,
+    );
 
-//     // Draw label
-//     _drawLabel(canvas, box, result.label, result.score);
-//   }
+    // ── Homework 3: Skema warna berdasarkan severity ──
+    final color = _colorForDamage(result.label);
 
-//   /// Draw detection label above bounding box
-//   ///
-//   /// Implements smart positioning:
-//   /// - Draws above box by default
-//   /// - Moves below box if label would go off-screen
-//   void _drawLabel(Canvas canvas, Rect box, String label, double score) {
-//     final textSpan = TextSpan(
-//       text: ' $label - ${(score * 100).toInt()}% ',
-//       style: const TextStyle(
-//         color: Colors.white,
-//         fontSize: 14,
-//         fontWeight: FontWeight.bold,
-//         backgroundColor: Colors.black54,
-//       ),
-//     );
+    // Shadow box (agar terlihat di latar apapun)
+    canvas.drawRect(
+      box,
+      Paint()
+        ..color = Colors.black.withOpacity(0.4)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5.0
+        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 4),
+    );
 
-//     final textPainter = TextPainter(
-//       text: textSpan,
-//       textDirection: TextDirection.ltr,
-//     );
+    // Kotak utama
+    canvas.drawRect(
+      box,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
 
-//     textPainter.layout();
+    // Sudut kotak (corner marks) — lebih estetis
+    _drawCornerMarks(canvas, box, color);
 
-//     // Calculate label position
-//     double labelY = box.top - 25;
+    // Label teks dengan background + shadow (Homework 3)
+    final labelText =
+        '${result.label}  ${(result.score * 100).toStringAsFixed(0)}%';
+    _drawTextWithBackground(
+      canvas: canvas,
+      text: labelText,
+      position: Offset(box.left, box.top - 22),
+      textColor: Colors.white,
+      backgroundColor: color.withOpacity(0.85),
+      fontSize: 11.5,
+      centered: false,
+    );
+  }
 
-//     // Smart positioning: if label would go off-screen, move below box
-//     if (labelY < 0) {
-//       labelY = box.bottom + 5;
-//     }
+  /// Homework 3: Warna berdasarkan tingkat keparahan kerusakan jalan (RDD-2022).
+  /// D40 Pothole         → Merah (paling berat)
+  /// D20 Alligator Crack → Oranye (berat)
+  /// D10 Transverse Crack → Kuning (sedang)
+  /// D00 Longitudinal    → Hijau (ringan)
+  Color _colorForDamage(String label) {
+    if (label.contains('D40')) return Colors.red;
+    if (label.contains('D20')) return Colors.orange;
+    if (label.contains('D10')) return Colors.yellow;
+    return const Color(0xFF00E676); // hijau terang untuk D00
+  }
 
-//     // Draw shadow for better readability
-//     final shadowSpan = TextSpan(
-//       text: ' $label - ${(score * 100).toInt()}% ',
-//       style: const TextStyle(
-//         color: Colors.black,
-//         fontSize: 14,
-//         fontWeight: FontWeight.bold,
-//       ),
-//     );
+  /// Gambar tanda sudut pada kotak deteksi (estetika enterprise).
+  void _drawCornerMarks(Canvas canvas, Rect box, Color color) {
+    const len = 14.0;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke;
 
-//     final shadowPainter = TextPainter(
-//       text: shadowSpan,
-//       textDirection: TextDirection.ltr,
-//     );
+    // Top-left
+    canvas.drawLine(box.topLeft, box.topLeft.translate(len, 0), paint);
+    canvas.drawLine(box.topLeft, box.topLeft.translate(0, len), paint);
+    // Top-right
+    canvas.drawLine(box.topRight, box.topRight.translate(-len, 0), paint);
+    canvas.drawLine(box.topRight, box.topRight.translate(0, len), paint);
+    // Bottom-left
+    canvas.drawLine(box.bottomLeft, box.bottomLeft.translate(len, 0), paint);
+    canvas.drawLine(box.bottomLeft, box.bottomLeft.translate(0, -len), paint);
+    // Bottom-right
+    canvas.drawLine(box.bottomRight, box.bottomRight.translate(-len, 0), paint);
+    canvas.drawLine(box.bottomRight, box.bottomRight.translate(0, -len), paint);
+  }
 
-//     shadowPainter.layout();
+  // ─────────────────────────────────────────────
+  //  HELPER: Teks dengan background + shadow (Homework 3)
+  // ─────────────────────────────────────────────
 
-//     // Draw shadow with offset
-//     shadowPainter.paint(canvas, Offset(box.left + 2, labelY + 2));
+  void _drawTextWithBackground({
+    required Canvas canvas,
+    required String text,
+    required Offset position,
+    required Color textColor,
+    required Color backgroundColor,
+    double fontSize = 13,
+    bool centered = false,
+  }) {
+    final textSpan = TextSpan(
+      text: ' $text ',
+      style: TextStyle(
+        color: textColor,
+        fontSize: fontSize,
+        fontWeight: FontWeight.w600,
+        // Shadow pada teks agar terbaca di latar yang mirip warna teks
+        shadows: const [
+          Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(1, 1)),
+          Shadow(color: Colors.black26, blurRadius: 8, offset: Offset(2, 2)),
+        ],
+      ),
+    );
 
-//     // Draw main text
-//     textPainter.paint(canvas, Offset(box.left, labelY));
-//   }
+    final painter = TextPainter(
+      text: textSpan,
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
 
-//   /// Get color based on damage severity
-//   ///
-//   /// RDD-2022 Dataset Classification:
-//   /// - D40 (Pothole): Severe - Red
-//   /// - D20 (Alligator Crack): High - Orange
-//   /// - D10 (Transverse Crack): Medium - Yellow
-//   /// - D00 (Longitudinal Crack): Minor - Green
-//   Color _getColorForDamage(String label) {
-//     if (label.contains('D40')) return Colors.red; // Pothole - Severe
-//     if (label.contains('D20')) return Colors.orange; // Alligator - High
-//     if (label.contains('D10')) return Colors.yellow; // Transverse - Medium
-//     return Colors.green; // Longitudinal - Minor
-//   }
+    final dx = centered ? position.dx - painter.width / 2 : position.dx;
+    final dy = position.dy;
 
-//   @override
-//   bool shouldRepaint(covariant CustomPainter oldDelegate) {
-//     // Repaint when detections change
-//     // In Phase 5, this will be true for dynamic updates
-//     return true;
-//   }
-// }
+    // Background pill
+    final bgRect = Rect.fromLTWH(dx - 2, dy - 2, painter.width + 4, painter.height + 4);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bgRect, const Radius.circular(4)),
+      Paint()..color = backgroundColor,
+    );
+
+    // Gambar teks di atas background
+    painter.paint(canvas, Offset(dx, dy));
+  }
+
+  @override
+  bool shouldRepaint(covariant DamagePainter oldDelegate) {
+    return oldDelegate.results != results ||
+        oldDelegate.showSearching != showSearching;
+  }
+}
