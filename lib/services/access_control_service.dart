@@ -1,32 +1,64 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../features/logbook/models/log_model.dart';
 
-class AccessControlService {
-  // Mengambil roles dari .env di root
-  static List<String> get availableRoles =>
-      dotenv.env['APP_ROLES']?.split(',') ?? ['Anggota'];
+class UserRole {
+  static const String ketua   = 'Ketua';
+  static const String anggota = 'Anggota';
+}
 
-  static const String actionCreate = 'create';
-  static const String actionRead = 'read';
-  static const String actionUpdate = 'update';
-  static const String actionDelete = 'delete';
+class LogAction {
+  static const String create = 'create';
+  static const String read   = 'read';
+  static const String update = 'update';
+  static const String delete = 'delete';
+}
 
-  // Matrix perizinan yang tetap fleksibel
-  static final Map<String, List<String>> _rolePermissions = {
-    'Ketua': [actionCreate, actionRead, actionUpdate, actionDelete],
-    'Anggota': [actionCreate, actionRead],
-    'Asisten': [actionRead, actionUpdate],
-  };
+/// Policy Manager terpusat
+class AccessPolicy {
+  static bool canPerform({
+    required String currentUsername,
+    required String currentRole,
+    required String action,
+    LogModel? log,
+  }) {
+    switch (action) {
 
-  static bool canPerform(String role, String action, {bool isOwner = false}) {
-    final permissions = _rolePermissions[role] ?? [];
-    bool hasBasicPermission = permissions.contains(action);
+      // Semua orang boleh membuat catatan baru
+      case LogAction.create:
+        return true;
 
-    // Logic khusus kepemilikan data (Owner-based RBAC)
-    if (role == 'Anggota' &&
-        (action == actionUpdate || action == actionDelete)) {
-      return isOwner;
+      // Boleh baca jika pemilik, atau catatan publik
+      case LogAction.read:
+        if (log == null) return true;
+        return isOwner(currentUsername: currentUsername, log: log) || log.isPublic;
+
+       // Update: hanya pemilik catatan yang boleh edit
+      case LogAction.update:
+        if (log == null) return false;
+        return isOwner(currentUsername: currentUsername, log: log);
+
+      // Delete: hanya pemilik catatan yang boleh hapus
+      case LogAction.delete:
+        if (log == null) return false;
+        return isOwner(currentUsername: currentUsername, log: log);
+
+      default:
+        return false;
     }
+  }
 
-    return hasBasicPermission;
+  /// Cek kepemilikan catatan
+  static bool isOwner({required String currentUsername, required LogModel log}) {
+    return log.username == currentUsername || log.authorId == currentUsername;
+  }
+
+  // Cek apakah user bisa melihat catatan
+  static bool canView({
+    required String currentUsername,
+    required String teamId,
+    required LogModel log,
+  }) {
+    if (isOwner(currentUsername: currentUsername, log: log)) return true;
+    if (log.isPublic && log.teamId == teamId) return true;
+    return false;
   }
 }

@@ -4,175 +4,147 @@ import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-// Enum untuk jenis filter yang tersedia
-enum CameraFilter { normal, grayscale, sepia, inverted, cool, warm }
-
-extension CameraFilterExtension on CameraFilter {
-  String get displayName {
-    switch (this) {
-      case CameraFilter.normal:
-        return 'Normal';
-      case CameraFilter.grayscale:
-        return 'Grayscale';
-      case CameraFilter.sepia:
-        return 'Sepia';
-      case CameraFilter.inverted:
-        return 'Inverted';
-      case CameraFilter.cool:
-        return 'Cool';
-      case CameraFilter.warm:
-        return 'Warm';
-    }
-  }
-
-  // ColorFilter matrix untuk setiap filter
-  ColorFilter? get colorFilter {
-    switch (this) {
-      case CameraFilter.normal:
-        return null; // Tidak ada filter
-
-      case CameraFilter.grayscale:
-        return const ColorFilter.matrix(<double>[
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0.2126, 0.7152, 0.0722, 0, 0,
-          0,      0,      0,      1, 0,
-        ]);
-
-      case CameraFilter.sepia:
-        return const ColorFilter.matrix(<double>[
-          0.393, 0.769, 0.189, 0, 0,
-          0.349, 0.686, 0.168, 0, 0,
-          0.272, 0.534, 0.131, 0, 0,
-          0,     0,     0,     1, 0,
-        ]);
-
-      case CameraFilter.inverted:
-        return const ColorFilter.matrix(<double>[
-          -1,  0,  0, 0, 255,
-           0, -1,  0, 0, 255,
-           0,  0, -1, 0, 255,
-           0,  0,  0, 1,   0,
-        ]);
-
-      case CameraFilter.cool:
-        return const ColorFilter.matrix(<double>[
-          1.0,  0.0,  0.0, 0,  0,
-          0.0,  1.0,  0.0, 0,  0,
-          0.0,  0.0,  1.3, 0, -30,
-          0,    0,    0,   1,  0,
-        ]);
-
-      case CameraFilter.warm:
-        return const ColorFilter.matrix(<double>[
-          1.3,  0.0, 0.0, 0,  0,
-          0.0,  1.05, 0.0, 0, 0,
-          0.0,  0.0, 0.8, 0,  0,
-          0,    0,   0,   1,  0,
-        ]);
-    }
-  }
-}
-
+/// VisionController manages the camera lifecycle and detection logic
+/// for the Smart Patrol System.
+///
+/// This controller follows SOLID principles:
+/// - Single Responsibility: Manages only camera and detection state
+/// - Open/Closed: Can be extended without modifying core logic
+/// - Dependency Inversion: Depends on abstractions (ChangeNotifier)
 class VisionController extends ChangeNotifier with WidgetsBindingObserver {
+  // Camera controller instance
   CameraController? controller;
+
+  // State tracking
   bool isInitialized = false;
   String? errorMessage;
+
+  // Detection results (for Phase 5)
   List<DetectionResult> currentDetections = [];
   Timer? _mockDetectionTimer;
 
+  // UX Enhancement: Flashlight and Overlay toggles (Phase 6)
   bool isFlashlightOn = false;
   bool isOverlayVisible = true;
 
-  // Filter yang sedang aktif
-  CameraFilter currentFilter = CameraFilter.normal;
-
   VisionController() {
+    // Register observer to monitor app lifecycle status
     WidgetsBinding.instance.addObserver(this);
     initCamera();
   }
 
+  /// Initialize the rear camera with medium resolution
+  /// ResolutionPreset.medium balances AI accuracy with performance
   Future<void> initCamera() async {
     try {
       final cameras = await availableCameras();
 
       if (cameras.isEmpty) {
-        errorMessage = "Tidak ada kamera yang terdeteksi.";
+        errorMessage = "No camera detected on device.";
         notifyListeners();
         return;
       }
 
+      // Select Rear Camera (Index 0)
       controller = CameraController(
         cameras[0],
-        ResolutionPreset.high,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        ResolutionPreset.high, // Use high resolution for better photo quality
+        enableAudio: false, // We only need visual for road damage detection
+        imageFormatGroup:
+            ImageFormatGroup.jpeg, // Use JPEG format for better compatibility
       );
 
       await controller!.initialize();
       isInitialized = true;
       errorMessage = null;
     } catch (e) {
-      errorMessage = "Gagal inisialisasi kamera: $e";
+      errorMessage = "Failed to initialize camera: $e";
     }
 
     notifyListeners();
   }
 
+  /// Capture photo from camera stream
+  /// This ensures full frame capture with proper resolution
   Future<XFile?> takePhoto() async {
-    if (controller == null || !controller!.value.isInitialized) return null;
+    if (controller == null || !controller!.value.isInitialized) {
+      return null;
+    }
 
     try {
+      // Pause camera stream briefly to ensure clean capture
       await controller!.pausePreview();
+
+      // Small delay to ensure camera is ready
       await Future.delayed(const Duration(milliseconds: 100));
+
+      // Capture the picture
       final image = await controller!.takePicture();
+
+      // Resume camera stream
       await controller!.resumePreview();
+
       return image;
     } catch (e) {
-      errorMessage = "Gagal mengambil foto: $e";
+      errorMessage = "Failed to capture photo: $e";
       notifyListeners();
       return null;
     }
   }
 
-  // Ganti filter aktif
-  void setFilter(CameraFilter filter) {
-    currentFilter = filter;
-    notifyListeners();
-  }
-
+  /// Handle app lifecycle state changes
+  ///
+  /// This is CRITICAL for preventing memory leaks and battery drain
+  /// - AppLifecycleState.inactive: Release camera when app goes to background
+  /// - AppLifecycleState.resumed: Re-initialize camera when app returns to foreground
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final CameraController? cameraController = controller;
-    if (cameraController == null || !cameraController.value.isInitialized) return;
+
+    // If controller doesn't exist or isn't ready, ignore
+    if (cameraController == null || !cameraController.value.isInitialized) {
+      return;
+    }
 
     if (state == AppLifecycleState.inactive) {
+      // Release camera resource when app is not visible
       cameraController.dispose();
       isInitialized = false;
       notifyListeners();
     } else if (state == AppLifecycleState.resumed) {
+      // Re-initialize when user returns to app
       initCamera();
     }
   }
 
+  /// Toggle flashlight (torch) on/off
+  /// UX Enhancement from Phase 6
   Future<void> toggleFlashlight() async {
     if (controller == null || !controller!.value.isInitialized) return;
+
     isFlashlightOn = !isFlashlightOn;
+
     try {
       await controller!.setFlashMode(
-        isFlashlightOn ? FlashMode.torch : FlashMode.off,
+        isFlashlightOn ? FlashMode.always : FlashMode.off,
       );
     } catch (e) {
-      errorMessage = "Gagal toggle flashlight: $e";
+      errorMessage = "Failed to toggle flashlight: $e";
+      notifyListeners();
     }
+
     notifyListeners();
   }
 
+  /// Toggle overlay visibility
+  /// UX Enhancement from Phase 6
   void toggleOverlay() {
     isOverlayVisible = !isOverlayVisible;
     notifyListeners();
   }
 
+  /// Start mock detection simulation
+  /// Phase 5: Simulates AI detection by moving bounding box every 3 seconds
   void startMockDetection() {
     _mockDetectionTimer = Timer.periodic(
       const Duration(seconds: 3),
@@ -180,23 +152,31 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
+  /// Generate a mock detection result at random position
+  /// This simulates YOLO output before actual AI integration in Module 7
   void _generateMockDetection() {
     final random = Random();
+
+    // Generate random normalized coordinates (0.0 - 1.0)
+    // Keep within 10%-90% range to avoid edge clipping
     final x = random.nextDouble() * 0.8 + 0.1;
     final y = random.nextDouble() * 0.8 + 0.1;
-    final width = 0.2 + random.nextDouble() * 0.2;
-    final height = 0.1 + random.nextDouble() * 0.1;
+    final width = 0.2 + random.nextDouble() * 0.2; // 20%-40% of screen width
+    final height = 0.1 + random.nextDouble() * 0.1; // 10%-20% of screen height
 
+    // Create detection result
     currentDetections = [
       DetectionResult(
         box: Rect.fromLTWH(x, y, width, height),
         label: _getRandomDamageType(),
-        score: 0.85 + random.nextDouble() * 0.14,
+        score: 0.85 + random.nextDouble() * 0.14, // 85%-99% confidence
       ),
     ];
+
     notifyListeners();
   }
 
+  /// Get a random damage type from RDD-2022 dataset
   String _getRandomDamageType() {
     final types = ['D00', 'D10', 'D20', 'D40'];
     final labels = {
@@ -206,22 +186,42 @@ class VisionController extends ChangeNotifier with WidgetsBindingObserver {
       'D40': 'Pothole',
     };
     final type = types[Random().nextInt(types.length)];
-    return '[$type] ${labels[type]!}';
+    return ' [$type] ${labels[type]!}';
   }
 
+  /// Clean up resources
+  ///
+  /// This is MANDATORY to prevent memory leaks
+  /// - Remove observer to stop listening to lifecycle events
+  /// - Dispose camera controller to release hardware
+  /// - Cancel mock detection timer
   @override
   void dispose() {
+    // Remove observer to prevent memory leak
     WidgetsBinding.instance.removeObserver(this);
+
+    // Cancel mock detection timer
     _mockDetectionTimer?.cancel();
+
+    // Release camera hardware
     controller?.dispose();
+
     super.dispose();
   }
 }
 
+/// Data Transfer Object (DTO) for detection results
+///
+/// This follows the Single Responsibility Principle:
+/// - VisionController generates these objects
+/// - DamagePainter only draws them
+///
+/// If you replace YOLO with another model, only change data population
+/// in VisionController without touching UI or Painter code.
 class DetectionResult {
-  final Rect box;
-  final String label;
-  final double score;
+  final Rect box; // Box coordinates (normalized 0.0-1.0)
+  final String label; // Damage type (D40, D20, etc)
+  final double score; // AI confidence percentage (0.0-1.0)
 
   DetectionResult({
     required this.box,

@@ -1,19 +1,18 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:hive_flutter/hive_flutter.dart'; // Gunakan hive_flutter, bukan hive biasa
-import 'package:pcd_ets_041/features/onboarding/onboarding_view.dart';
-import 'package:pcd_ets_041/features/models/log_model.dart';
-import 'package:pcd_ets_041/helpers/log_helper.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:helpers/log_helper.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'features/logbook/models/log_model.dart';
+import 'features/onboarding/onboarding_view.dart';
 
 List<CameraDescription> cameras =
     []; // Variabel global untuk menyimpan daftar kamera
 
 void main() async {
-  // Wajib untuk operasi asinkron sebelum runApp
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load ENV
   await dotenv.load(fileName: ".env");
 
   // VERIFIKASI KETERSEDIAAN KAMERA
@@ -32,12 +31,12 @@ void main() async {
     );
   }
 
-  // INISIALISASI HIVE
+  // Inisialisasi locale Indonesia untuk format tanggal
+  await initializeDateFormatting('id', null);
   await Hive.initFlutter();
-  Hive.registerAdapter(LogModelAdapter()); // WAJIB: Sesuai nama di .g.dart
-  await Hive.openBox<LogModel>(
-    'offline_logs',
-  ); // Buka box sebelum Controller dipakai
+  Hive.registerAdapter(LogModelAdapter());
+  await Hive.openBox<LogModel>('logs_box');
+
   runApp(const MyApp());
 }
 
@@ -47,14 +46,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'LogBook App',
-      debugShowCheckedModeBanner:
-          false, // Menghilangkan pita debug di pojok kanan
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true, // Menggunakan desain Material 3 yang modern
       ),
-      // Di sini kita panggil CounterView sebagai halaman utama
+      debugShowCheckedModeBanner: false,
       home: const OnboardingView(),
     );
   }

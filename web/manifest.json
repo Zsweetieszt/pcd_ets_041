@@ -1,6 +1,6 @@
 {
-    "name": "pcd_ets_041",
-    "short_name": "pcd_ets_041",
+    "name": "logbook_app_001",
+    "short_name": "logbook_app_001",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
