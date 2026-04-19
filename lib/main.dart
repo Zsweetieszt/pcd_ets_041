@@ -2,7 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:helpers/log_helper.dart';
+import 'helpers/log_helper.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'features/logbook/models/log_model.dart';
 import 'features/onboarding/onboarding_view.dart';

@@ -12,6 +12,8 @@ import 'counter_view.dart';
 import 'models/log_model.dart';
 import '../../services/access_control_service.dart';
 import '../onboarding/onboarding_view.dart';
+import '../vision/vision_view.dart';
+
 
 class LogView extends StatefulWidget {
   final String username;
@@ -490,6 +492,18 @@ class _LogViewState extends State<LogView> {
                     onPressed: _isOnline ? _syncFromCloud : null,
                   ),
           ),
+          // 🎥 TOMBOL KAMERA - TAMBAHKAN INI
+          IconButton(
+            icon: const Icon(Icons.camera_alt, color: Colors.white),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const VisionView(),
+              ),
+            ),
+            tooltip: 'Smart Camera',
+          ),
+          
           IconButton(
             icon: const Icon(Icons.calculate_outlined, color: Colors.white),
             onPressed: () => Navigator.push(

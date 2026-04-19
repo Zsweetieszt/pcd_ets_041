@@ -1,21 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-
 import 'vision_controller.dart';
-import 'damage_painter.dart';
 
-/// VisionPage implements the layered stack architecture
-/// for Smart Patrol System.
-///
-/// Architecture:
-/// - Layer 1 (Bottom): CameraPreview - Live video feed from hardware
-/// - Layer 2 (Top): CustomPaint - Digital overlay for detection boxes
-///
-/// This follows Separation of Concerns principle:
-/// - VisionController: Manages camera lifecycle and detection logic
-/// - VisionPage: Manages UI layout and user interactions
-/// - DamagePainter: Manages drawing logic (Phase 4)
 class VisionView extends StatefulWidget {
   const VisionView({super.key});
 
@@ -24,22 +10,16 @@ class VisionView extends StatefulWidget {
 }
 
 class _VisionViewState extends State<VisionView> {
-  // Initialize controller locally for this page
   late VisionController _visionController;
 
   @override
   void initState() {
     super.initState();
     _visionController = VisionController();
-
-    // Start mock detection (Phase 5)
-    _visionController.startMockDetection();
   }
 
   @override
   void dispose() {
-    // MANDATORY: Disconnect camera when navigating away
-    // This prevents memory leaks and battery drain
     _visionController.dispose();
     super.dispose();
   }
@@ -47,136 +27,223 @@ class _VisionViewState extends State<VisionView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text("Smart-Patrol Vision"),
+        title: const Text("Smart Vision Camera"),
+        backgroundColor: Colors.black87,
         actions: [
-          // Flashlight toggle (Phase 6 UX Enhancement)
-          IconButton(
-            icon: Icon(
-              _visionController.isFlashlightOn
-                  ? Icons.flash_on
-                  : Icons.flash_off,
+          // Flashlight toggle
+          ListenableBuilder(
+            listenable: _visionController,
+            builder: (context, _) => IconButton(
+              icon: Icon(
+                _visionController.isFlashlightOn 
+                    ? Icons.flash_on 
+                    : Icons.flash_off,
+                color: _visionController.isFlashlightOn 
+                    ? Colors.yellow 
+                    : Colors.white,
+              ),
+              onPressed: _visionController.toggleFlashlight,
+              tooltip: 'Toggle Flashlight',
             ),
-            onPressed: _visionController.toggleFlashlight,
-            tooltip: 'Toggle Flashlight',
           ),
-          // Overlay visibility toggle (Phase 6 UX Enhancement)
-          IconButton(
-            icon: Icon(
-              _visionController.isOverlayVisible
-                  ? Icons.visibility
-                  : Icons.visibility_off,
+          // Filter toggle
+          ListenableBuilder(
+            listenable: _visionController,
+            builder: (context, _) => IconButton(
+              icon: Icon(
+                _visionController.isFilterEnabled
+                    ? Icons.filter_vintage
+                    : Icons.filter_vintage_outlined,
+                color: _visionController.isFilterEnabled
+                    ? Colors.blue
+                    : Colors.white,
+              ),
+              onPressed: _visionController.toggleFilter,
+              tooltip: 'Toggle Filter',
             ),
-            onPressed: _visionController.toggleOverlay,
-            tooltip: 'Toggle Overlay',
           ),
         ],
       ),
       body: ListenableBuilder(
         listenable: _visionController,
         builder: (context, child) {
-          // Show loading if camera is initializing
           if (!_visionController.isInitialized) {
             return _buildLoadingState();
           }
-
-          // Continue to Stack structure
-          return _buildVisionStack();
+          return _buildCameraStack();
         },
       ),
+      bottomNavigationBar: _buildFilterSelector(),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final image = await _visionController.takePhoto();
-          if (image != null && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Photo saved: ${image.path}'),
-                duration: const Duration(seconds: 3),
-                action: SnackBarAction(
-                  label: 'View',
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                    // You can add code here to open the image
-                    // For now, just showing the path
-                  },
-                ),
-              ),
-            );
-          }
-        },
-        tooltip: 'Capture Photo',
-        child: const Icon(Icons.camera),
+        onPressed: _capturePhoto,
+        backgroundColor: Colors.white,
+        child: const Icon(Icons.camera, color: Colors.black, size: 32),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  /// Build loading state with informative message
-  /// Phase 6 UX Enhancement
   Widget _buildLoadingState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(),
+          const CircularProgressIndicator(color: Colors.white),
           const SizedBox(height: 16),
-          const Text(
-            "Menghubungkan ke Sensor Visual...",
-            style: TextStyle(fontSize: 16),
+          Text(
+            _visionController.errorMessage ?? "Menghubungkan kamera...",
+            style: const TextStyle(color: Colors.white70),
+            textAlign: TextAlign.center,
           ),
-          if (_visionController.errorMessage != null) ...[
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                _visionController.errorMessage!,
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => openAppSettings(),
-              child: const Text("Open Settings"),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  /// Build the layered stack architecture
-  ///
-  /// This is the core of Vision architecture:
-  /// - Stack with fit: StackFit.expand fills entire screen
-  /// - Layer 1: CameraPreview with AspectRatio to prevent distortion
-  /// - Layer 2: CustomPaint for digital overlay
-  Widget _buildVisionStack() {
+  Widget _buildCameraStack() {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // LAYER 1: Hardware Preview
-        // Use AspectRatio to prevent image distortion (PCD Connection)
-        // Camera images often have different aspect ratios than screen
-        // This ensures the image maintains correct proportions
+        // Layer 1: Camera Preview
         Center(
           child: AspectRatio(
             aspectRatio: _visionController.controller!.value.aspectRatio,
             child: CameraPreview(_visionController.controller!),
           ),
         ),
-
-        // LAYER 2: Digital Overlay (Canvas)
-        // This layer is transparent and sits exactly above camera
-        // DamagePainter will draw detection boxes here (Phase 4)
-        if (_visionController.isOverlayVisible)
-          Positioned.fill(
-            child: CustomPaint(
-              painter: DamagePainter(
-                _visionController.currentDetections,
-              ), // Phase 4: Will be updated with detections
+        
+        // Layer 2: Filtered Image Overlay (jika ada)
+        if (_visionController.isFilterEnabled && 
+            _visionController.processedImageBytes != null)
+          Center(
+            child: AspectRatio(
+              aspectRatio: _visionController.controller!.value.aspectRatio,
+              child: Image.memory(
+                _visionController.processedImageBytes!,
+                fit: BoxFit.cover,
+                gaplessPlayback: true, // Smooth transition
+              ),
             ),
           ),
+        
+        // Layer 3: Info Overlay
+        Positioned(
+          top: 16,
+          left: 16,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              'Filter: ${_visionController.currentFilter}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  Widget _buildFilterSelector() {
+    return Container(
+      height: 100,
+      color: Colors.black87,
+      child: ListenableBuilder(
+        listenable: _visionController,
+        builder: (context, _) => ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          itemCount: _visionController.availableFilters.length,
+          itemBuilder: (context, index) {
+            final filterName = _visionController.availableFilters[index];
+            final isSelected = _visionController.currentFilter == filterName;
+            
+            return GestureDetector(
+              onTap: () => _visionController.setFilter(filterName),
+              child: Container(
+                width: 80,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.blue : Colors.grey.shade800,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? Colors.blue : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _getFilterIcon(filterName),
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      filterName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  IconData _getFilterIcon(String filterName) {
+    switch (filterName) {
+      case 'Grayscale':
+        return Icons.gradient;
+      case 'Sepia':
+        return Icons.wb_sunny;
+      case 'Inverted':
+        return Icons.invert_colors;
+      case 'High Contrast':
+        return Icons.contrast;
+      case 'Edge Detection':
+        return Icons.border_outer;
+      default:
+        return Icons.camera_alt;
+    }
+  }
+
+  Future<void> _capturePhoto() async {
+    final image = await _visionController.takePhoto();
+    
+    if (image != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Photo saved: ${image.path}'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 }
